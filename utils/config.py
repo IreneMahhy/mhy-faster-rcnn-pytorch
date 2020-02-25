@@ -43,6 +43,7 @@ class Config:
     # model
     load_path = None
 
+    pretrained_model = 'res101'
     caffe_pretrain = False  # use caffe pretrained model instead of torchvision
     vgg_caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'
     res_caffe_pretrain_path = 'checkpoints/resnet101-caffe.pth'
