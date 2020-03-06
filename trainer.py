@@ -17,7 +17,7 @@ from model.utils.creator_tools import AnchorTargetCreator, ProposalTargetCreator
 LossTuple = namedtuple('LossTuple',
                        ['rpn_loc_loss', 'rpn_cls_loss',
                         'roi_loc_loss', 'roi_cls_loss',
-                        'total+loss'])
+                        'total_loss'])
 
 
 class FasterRCNNTrainer(nn.Module):
@@ -31,11 +31,11 @@ class FasterRCNNTrainer(nn.Module):
         self.anchor_target_creator = AnchorTargetCreator()
         self.proposal_target_creator = ProposalTargetCreator()
 
-        self.loc_normallize_mean = faster_rcnn.loc_normalize_mean
-        self.loc_normallize_std = faster_rcnn.loc_normalize_std
+        self.loc_normalize_mean = faster_rcnn.loc_normalize_mean
+        self.loc_normalize_std = faster_rcnn.loc_normalize_std
 
         self.optimizer = self.faster_rcnn.get_optimizer()
-        self.vis= Visualizer(env=opt.env)
+        self.vis = Visualizer(env=opt.env)
 
         self.rpn_cm = ConfusionMeter(2)
         self.roi_cm = ConfusionMeter(21)
@@ -63,7 +63,7 @@ class FasterRCNNTrainer(nn.Module):
         # roi训练样本及其回归目标loc、label
         sample_roi, gt_roi_loc, gt_roi_label = self.proposal_target_creator(
             roi, at.tonumpy(bbox), at.tonumpy(label),
-            self.loc_normallize_mean, self.loc_normallize_std
+            self.loc_normalize_mean, self.loc_normalize_std
         )
         # batch size = 1
         sample_roi_index = t.zeros(len(sample_roi))
@@ -94,7 +94,7 @@ class FasterRCNNTrainer(nn.Module):
 
         # 计算ROI Loss
         n_sample = roi_cls_loc.shape[0]
-        roi_cls_loc = roi_cls_loc.view[n_sample, -1, 4]
+        roi_cls_loc = roi_cls_loc.view(n_sample, -1, 4)
         # roi样本对其对应类别的回归偏差
         roi_loc = roi_cls_loc[t.arange(0, n_sample).long().cuda(),
                             at.totensor(gt_roi_label).long()]

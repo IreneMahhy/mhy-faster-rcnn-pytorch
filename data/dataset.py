@@ -68,11 +68,11 @@ class Dataset:
 
     def __getitem__(self, idx):
         ori_img, bbox, label, difficult = self.db.get_example(idx)
-        img, bbox, label, scale = self.tsf((ori_img, bbox, label))  #变换ori_img
+        img, bbox, label, scale = self.tsf((ori_img, bbox, label))  # 变换ori_img
 
         return img.copy(), bbox.copy(), label.copy(), scale
 
-    def __len__(self):  #返回引用数据集的长度
+    def __len__(self):  # 返回引用数据集的长度
         return len(self.db)
 
 
@@ -97,14 +97,14 @@ class Transform(object):
         self.min_size = min_size
         self.max_size = max_size
 
-    def __call__(self, in_data):    #接收传入的元组
+    def __call__(self, in_data):    # 接收传入的元组
         img, bbox, label = in_data
         _, H, W = img.shape
         # 按大小范围（默认600~1000）等比例缩放图像，计算scale并调整bbox
         img = preprocess(img, self.min_size, self.max_size)
         _, o_H, o_W = img.shape
         scale = o_H / H
-        bbox = util.resize_bbox(bbox, (H, W), (o_H,o_W))
+        bbox = util.resize_bbox(bbox, (H, W), (o_H, o_W))
 
         # 随机对图像进行水平翻转，并随之变化bbox
         img, params = util.random_flip(

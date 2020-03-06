@@ -1,8 +1,10 @@
 import time
+
 import numpy as np
 import torch as t
 import matplotlib
 import visdom
+
 from data.voc_dataset import VOC_BBOX_LABEL_NAMES
 
 matplotlib.use('Agg')
@@ -29,6 +31,7 @@ def vis_bbox(img, bbox, label=None, score=None, ax=None):
         raise ValueError('The length of score must be same as that of bbox')
 
     ax = vis_image(img, ax=ax)
+
     if len(bbox) == 0:
         return ax
 
@@ -40,9 +43,10 @@ def vis_bbox(img, bbox, label=None, score=None, ax=None):
                                     height, fill=False,
                                     edgecolor='red', linewidth=2))
         caption = list()
+
         if label is not None and label_names is not None:
             lb = label[i]
-            if not (-1 < lb < len(label_names)):
+            if not (-1 <= lb < len(label_names)):
                 raise ValueError('No corresponding name is given')
             caption.append(label_names[lb])
         if score is not None:
@@ -141,7 +145,7 @@ class Visualizer(object):
         self.log({'loss':1,'lr':0.0001})
         """
         self.log_text += ('[{time}] {info} <br>'.format(
-            time=time.strftime('%m%d_%H%M%S'), \
+            time=time.strftime('%m%d_%H%M%S'),
             info=info))
         self.vis.text(self.log_text, win)
 

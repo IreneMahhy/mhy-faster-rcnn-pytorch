@@ -33,18 +33,19 @@ def loc2bbox(src_bbox, loc):
     src_height = src_bbox[:, 2] - src_bbox[:, 0]
     src_width = src_bbox[:, 3] - src_bbox[:, 1]
     src_ctr_y = src_bbox[:, 0] + 0.5 * src_height
-    src_ctr_x = src_bbox[:,1] + 0.5 * src_width
+    src_ctr_x = src_bbox[:, 1] + 0.5 * src_width
 
-    ctr_y = loc[:, 0] * src_height[:, np.newaxis] + src_ctr_y[:, np.newaxis]
-    ctr_x = loc[:, 1] * src_width[:, np.newaxis] + src_ctr_x[:, np.newaxis]
-    height = np.exp(loc[:, 2]) * src_height[:, np.newaxis]
-    width = np.exp(loc[:, 3]) * src_width[:, np.newaxis]
+    ctr_y = loc[:, 0::4] * src_height[:, np.newaxis] + src_ctr_y[:, np.newaxis]
+    ctr_x = loc[:, 1::4] * src_width[:, np.newaxis] + src_ctr_x[:, np.newaxis]
+    height = np.exp(loc[:, 2::4]) * src_height[:, np.newaxis]
+    width = np.exp(loc[:, 3::4]) * src_width[:, np.newaxis]
 
     dst_bbox = np.zeros(loc.shape, dtype=loc.dtype)
-    dst_bbox[:, 0] = ctr_y - 0.5 * height
-    dst_bbox[:, 1] = ctr_x - 0.5 * width
-    dst_bbox[:, 2] = ctr_y + 0.5 * height
-    dst_bbox[:, 3] = ctr_x + 0.5 * width
+    # 切片时保持维度
+    dst_bbox[:, 0::4] = ctr_y - 0.5 * height
+    dst_bbox[:, 1::4] = ctr_x - 0.5 * width
+    dst_bbox[:, 2::4] = ctr_y + 0.5 * height
+    dst_bbox[:, 3::4] = ctr_x + 0.5 * width
 
     return dst_bbox
 
@@ -66,11 +67,11 @@ def bbox2loc(src_bbox, dst_bbox):
     width = np.maximum(width, eps)
 
     dy = (base_ctr_y - ctr_y) / height
-    dx = (base_ctr_x - ctr_x ) / width
+    dx = (base_ctr_x - ctr_x) / width
     dh = np.log(base_height / height)
     dw = np.log(base_width / width)
 
-    loc = np.vstack((dy, dx, dh, dw)).transpose
+    loc = np.vstack((dy, dx, dh, dw)).transpose()
     return loc
 
 

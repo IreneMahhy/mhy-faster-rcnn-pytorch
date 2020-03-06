@@ -5,6 +5,7 @@ from torch.nn import functional as F
 
 from model.utils.bbox_tools import generate_anchor_base
 from model.utils.creator_tools import ProposalCreator
+from utils.config import opt
 
 
 class RegionProposalNetwork(nn.Module):
@@ -24,6 +25,10 @@ class RegionProposalNetwork(nn.Module):
         self.proposal_layer = ProposalCreator(self, **proposal_creator_params)
         n_anchor = self.anchor_base.shape[0]
 
+        # vgg与resnet101的extractor输出维度不同
+        if opt.pretrained_model == 'res101':
+            in_channels = 1024
+
         self.conv1 = nn.Conv2d(in_channels, mid_channels, 3, 1, 1)  # 3*3卷积
         # 分类任务卷积通道数为anchor*2，回归任务为anchor*4
         self.score = nn.Conv2d(mid_channels, n_anchor*2, 1, 1, 0)
@@ -41,12 +46,13 @@ class RegionProposalNetwork(nn.Module):
         n_anchor = anchor.shape[0] // (hh * ww)
 
         h = F.relu(self.conv1(x))
+        # 对分数和loc的预测仅通过卷积，没有激活层
         rpn_locs = self.loc(h)
         rpn_locs = rpn_locs.permute(0, 2, 3, 1).contiguous().view(n, -1, 4)
         rpn_scores = self.score(h)
         rpn_scores = rpn_scores.permute(0, 2, 3, 1).contiguous()
 
-        rpn_softmax_score = F.softmax(rpn_scores.view(n, hh, ww, n_anchor, 2), axis=4)
+        rpn_softmax_score = F.softmax(rpn_scores.view(n, hh, ww, n_anchor, 2), dim=4)
         rpn_fg_scores = rpn_softmax_score[:, :, :, :, 1].contiguous()
         rpn_fg_scores = rpn_fg_scores.view(n, -1)   # 每个样本所有anchor前景的概率
         rpn_scores = rpn_scores.view(n, -1, 2)

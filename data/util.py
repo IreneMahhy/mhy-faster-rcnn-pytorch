@@ -19,7 +19,7 @@ def read_image(path, dtype=np.float32, color=True):
     if img.ndim == 2:   # 若为灰度图，返回(1, H, W)矩阵
         return img[np.newaxis]
     else:   # (H, W, C) -> (C, H, W)
-        return img[2, 0, 1]
+        return img.transpose((2, 0, 1))
 
 
 # 对图片按指定轴随机进行翻转
@@ -73,4 +73,4 @@ def flip_bbox(bbox, size, y_flip=False, x_flip=False):
         bbox[:, 1] = x_min
         bbox[:, 3] = x_max
 
-
+    return bbox

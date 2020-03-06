@@ -4,7 +4,7 @@ from pprint import pprint
 # 用于训练的参数设置
 class Config:
     # data
-    voc_data_dir = '/data/mahaoyun/voc/VOCdevkit/VOC2007/'
+    voc_data_dir = 'VOCdevkit/VOC2007/'
     min_size = 600
     max_size = 1000
     num_workers = 8
@@ -27,7 +27,7 @@ class Config:
 
     # preset
     data = 'voc'
-    pretrained_model = 'vgg16'
+    #pretrained_model = 'vgg16'
 
     # training
     epoch = 14
@@ -43,7 +43,7 @@ class Config:
     # model
     load_path = None
 
-    pretrained_model = 'res101'
+    pretrained_model = 'res101'  # vgg16
     caffe_pretrain = False  # use caffe pretrained model instead of torchvision
     vgg_caffe_pretrain_path = 'checkpoints/vgg16_caffe.pth'
     res_caffe_pretrain_path = 'checkpoints/resnet101-caffe.pth'

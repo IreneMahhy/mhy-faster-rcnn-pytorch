@@ -1,12 +1,13 @@
 from __future__ import absolute_import
 import os
 import resource
+# though cupy is not used but without this line, it raise errors...
 import cupy as cp
 from torch.utils import data as data_
 
 import ipdb
-import matplotlib
 from tqdm import tqdm
+import matplotlib
 
 from utils.config import opt
 from utils import array_tool as at
@@ -16,6 +17,9 @@ from model.faster_rcnn_res101 import FasterRCNNRes101
 from trainer import FasterRCNNTrainer
 from utils.vis_tool import visdom_bbox
 from utils.eval_tool import eval_detection_voc
+
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (20480, rlimit[1]))
 
 matplotlib.use('agg')
 
@@ -65,7 +69,7 @@ def train(**kwargs):
 
     if opt.pretrained_model == 'vgg16':
         faster_rcnn = FasterRCNNVGG16()
-    elif opt.pretrained_model  == 'res101':
+    elif opt.pretrained_model == 'res101':
         faster_rcnn = FasterRCNNRes101()
     print('Model construct completed!')
 
@@ -113,24 +117,24 @@ def train(**kwargs):
                 trainer.vis.img('roi_cm', at.totensor(trainer.roi_cm.conf, False).float())
 
             # 测试集评估结果
-            eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
-            trainer.vis.plot('test_map', eval_result['map'])
-            lr_ = trainer.faster_rcnn.optimizer.param_groups[0]['lr']
-            log_info = 'lr:{}, map:{},loss:{}'.format(str(lr_),
-                                                      str(eval_result['map']),
-                                                      str(trainer.get_meter_data()))
-            trainer.vis.log(log_info)
+        eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
+        trainer.vis.plot('test_map', eval_result['map'])
+        lr_ = trainer.faster_rcnn.optimizer.param_groups[0]['lr']
+        log_info = 'lr:{}, map:{}, loss:{}'.format(str(lr_),
+                                                   str(eval_result['map']),
+                                                   str(trainer.get_meter_data()))
+        trainer.vis.log(log_info)
 
-            if eval_result['map'] > best_map:
-                best_map = eval_result['map']
-                best_path = trainer.save(best_map=best_map)
-            if epoch == 9:
-                trainer.load(best_path)
-                trainer.faster_rcnn.scale_lr(opt.lr_decay)
-                lr_ = lr_ * opt.lr_decay
+        if eval_result['map'] > best_map:
+            best_map = eval_result['map']
+            best_path = trainer.save(best_map=best_map)
+        if epoch == 9:
+            trainer.load(best_path)
+            trainer.faster_rcnn.scale_lr(opt.lr_decay)
+            lr_ = lr_ * opt.lr_decay
 
-            if epoch == 13:
-                break
+        if epoch == opt.epoch:
+            break
 
 
 if __name__ == '__main__':

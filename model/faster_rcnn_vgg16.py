@@ -4,7 +4,7 @@ from torch import nn
 from torchvision.models import vgg16
 
 from model.region_proposal_network import RegionProposalNetwork
-from model.faster_rcnn import FasterRCNN, RoIHead
+from model.faster_rcnn import FasterRCNN, RoIHead, normal_init
 from utils.config import opt
 
 
@@ -67,11 +67,14 @@ class FasterRCNNVGG16(FasterRCNN):
 class VGG16RoIHead(RoIHead):
     def __init__(self, n_class, roi_size, spatial_scale, fc7):
         # 用于分类和回归的fc层
-        self.cls_loc = nn.Linear(4096, n_class * 4)
-        self.score = nn.Linear(4096, n_class)
-
         super(VGG16RoIHead, self).__init__(n_class, roi_size, spatial_scale, fc7)
 
+        self.cls_loc = nn.Linear(4096, n_class * 4)
+        self.score = nn.Linear(4096, n_class)
+        normal_init(self.cls_loc, 0, 0.001)
+        normal_init(self.score, 0, 0.01)
+
     def head_to_tail(self, pool):
+        pool = pool.view(pool.size(0), -1)
         fc = self.fc7(pool)
         return fc

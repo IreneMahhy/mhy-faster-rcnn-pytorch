@@ -9,13 +9,13 @@ from torchvision.models import resnet101
 import torch.utils.model_zoo as model_zoo
 
 from model.region_proposal_network import RegionProposalNetwork
-from model.faster_rcnn import FasterRCNN, RoIHead
+from model.faster_rcnn import FasterRCNN, RoIHead, normal_init
 from utils.config import opt
 
 
 # 可以从外部被import的函数白名单
-__all__ = ['ResNet', 'resnet18_', 'resnet34_', 'resnet50_',
-           'resnet101_', 'resnet152_']
+#__all__ = ['ResNet', 'resnet18_', 'resnet34_', 'resnet50_',
+#           'resnet101_', 'resnet152_']
 
 model_urls = {
   'resnet18': 'https://s3.amazonaws.com/pytorch/models/resnet18-5c106cde.pth',
@@ -133,39 +133,40 @@ class ResNet(nn.Module):
         m.weight.data.fill_(1)
         m.bias.data.zero_()
 
-    def _make_layer(self, block, planes, blocks, stride=1):
-      downsample = None
-      if stride != 1 or self.inplanes != planes * block.expansion:
-        downsample = nn.Sequential(
-          nn.Conv2d(self.inplanes, planes * block.expansion,
-                    kernel_size=1, stride=stride, bias=False),
-          nn.BatchNorm2d(planes * block.expansion),
-        )
 
-      layers = []
-      layers.append(block(self.inplanes, planes, stride, downsample))
-      self.inplanes = planes * block.expansion
-      for i in range(1, blocks):
-        layers.append(block(self.inplanes, planes))
+  def _make_layer(self, block, planes, blocks, stride=1):
+    downsample = None
+    if stride != 1 or self.inplanes != planes * block.expansion:
+      downsample = nn.Sequential(
+        nn.Conv2d(self.inplanes, planes * block.expansion,
+                  kernel_size=1, stride=stride, bias=False),
+        nn.BatchNorm2d(planes * block.expansion),
+      )
 
-      return nn.Sequential(*layers)
+    layers = []
+    layers.append(block(self.inplanes, planes, stride, downsample))
+    self.inplanes = planes * block.expansion
+    for i in range(1, blocks):
+      layers.append(block(self.inplanes, planes))
 
-    def forward(self, x):
-      x = self.conv1(x)
-      x = self.bn1(x)
-      x = self.relu(x)
-      x = self.maxpool(x)
+    return nn.Sequential(*layers)
 
-      x = self.layer1(x)
-      x = self.layer2(x)
-      x = self.layer3(x)
-      x = self.layer4(x)
+  def forward(self, x):
+    x = self.conv1(x)
+    x = self.bn1(x)
+    x = self.relu(x)
+    x = self.maxpool(x)
 
-      x = self.avgpool(x)
-      x = x.view(x.size(0), -1)  # 特征变为列向量
-      x = self.fc(x)
+    x = self.layer1(x)
+    x = self.layer2(x)
+    x = self.layer3(x)
+    x = self.layer4(x)
 
-      return x
+    x = self.avgpool(x)
+    x = x.view(x.size(0), -1)  # 特征变为列向量
+    x = self.fc(x)
+
+    return x
 
 
 def resnet18_(pretrained=False):
@@ -247,7 +248,8 @@ def decom_res101():
   def set_bn_fix(m):
     classname = m.__class__.__name__
     if classname.find('BatchNorm') != -1:
-      for p in m.parameters(): p.requires_grad = False
+      for p in m.parameters():
+        p.requires_grad = False
 
   RCNN_base.apply(set_bn_fix)
   RCNN_top.apply(set_bn_fix)
@@ -262,37 +264,56 @@ class FasterRCNNRes101(FasterRCNN):
                n_fg_class=20,
                ratios=[0.5, 1, 2],
                anchor_scales=[8, 16, 32]):
-      extractor, fc7 = decom_res101()
+    extractor, fc7 = decom_res101()
 
-      rpn = RegionProposalNetwork(
-          512, 512,
-          ratios=ratios,
-          anchor_scales=anchor_scales,
-          feat_stride=self.feat_stride
-      )
+    rpn = RegionProposalNetwork(
+        512, 512,
+        ratios=ratios,
+        anchor_scales=anchor_scales,
+        feat_stride=self.feat_stride
+    )
 
-      head = Res101RoIHead(
-          n_class=n_fg_class + 1,
-          roi_size=7,
-          spatial_scale=(1. / self.feat_stride),
-          fc7=fc7
-      )
+    head = Res101RoIHead(
+        n_class=n_fg_class + 1,
+        roi_size=7,
+        spatial_scale=(1. / self.feat_stride),
+        fc7=fc7
+    )
 
-      super(FasterRCNNRes101, self).__init__(
-          extractor,
-          rpn,
-          head
-      )
+    super(FasterRCNNRes101, self).__init__(
+        extractor,
+        rpn,
+        head
+    )
+
+  def train(self, mode=True):
+    # Override train so that the training mode is set as we want
+    nn.Module.train(self, mode)
+    if mode:
+      # Set fixed blocks to be in eval mode
+      self.extractor.eval()
+      self.extractor[5].train()
+      self.extractor[6].train()
+
+      def set_bn_eval(m):
+        classname = m.__class__.__name__
+        if classname.find('BatchNorm') != -1:
+          m.eval()
+
+      self.extractor.apply(set_bn_eval)
+      self.head.fc7.apply(set_bn_eval)
 
 
 class Res101RoIHead(RoIHead):
   def __init__(self, n_class, roi_size, spatial_scale, fc7):
     # 用于分类和回归的fc层
-    self.cls_loc = nn.Linear(2048, n_class * 4)
-    self.score = nn.Linear(2048, n_class)
-
     super(Res101RoIHead, self).__init__(n_class, roi_size, spatial_scale, fc7)
 
+    self.cls_loc = nn.Linear(2048, n_class * 4)
+    self.score = nn.Linear(2048, n_class)
+    normal_init(self.cls_loc, 0, 0.001)
+    normal_init(self.score, 0, 0.01)
+
   def head_to_tail(self, pool):
-    fc = self.fc7(pool).mean(3).mean(2)
+    fc = self.fc7(pool).mean(3).mean(2)  # average pool:128*2048*1*1
     return fc

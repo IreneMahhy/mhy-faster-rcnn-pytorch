@@ -1,7 +1,6 @@
 from collections import namedtuple
 from string import Template
 
-import torch as t
 import cupy as cp
 import torch as t
 from torch import nn
@@ -9,12 +8,14 @@ from torch import nn
 from torch.autograd import Function
 from model.utils.roi_cupy import kernel_backward, kernel_forward
 
+Stream = namedtuple('Stream', ['ptr'])
 
-@cupy.util.memoize(for_each_device=True)
+
+@cp.util.memoize(for_each_device=True)
 def load_kernel(kernel_name, code, **kwargs):
     cp.cuda.runtime.free(0)
     code = Template(code).substitute(**kwargs)
-    kernel_code = cupy.cuda.compile_with_cache(code)
+    kernel_code = cp.cuda.compile_with_cache(code)
     return kernel_code.get_function(kernel_name)
 
 
@@ -26,57 +27,75 @@ def GET_BLOCKS(N, K=CUDA_NUM_THREADS):
 
 
 class RoI(Function):
-    def __init__(self, outh, outw, spatial_scale):
-        self.forward_fn = load_kernel('roi_forward', kernel_forward)
-        self.backward_fn = load_kernel('roi_backward', kernel_backward)
-        self.outh, self.outw, self.spatial_scale = outh, outw, spatial_scale
-
-    def forward(self, x, rois):
+    @staticmethod
+    def forward(ctx, x, rois, outh, outw, spatial_scale):
+        forward_fn = load_kernel('roi_forward', kernel_forward)
+        backward_fn = load_kernel('roi_backward', kernel_backward)
         x = x.contiguous()
         rois = rois.contiguous()
-        self.in_size = B, C, H, W = x.size()
-        self.N = N = rois.size(0)   # RoI的总数
-        output = t.zeros(N, C, self.outh, self.outw).cuda() # pooling的输出
-        self.argmax_data = t.zeros(N, C, self.outh, self.outw).int().cuda()
-        self.rois = rois
+        in_size = B, C, H, W = x.size()
+        N = rois.size(0)   # RoI的总数
+        output = t.zeros(N, C, outh, outw).cuda()  # pooling的输出
+        argmax_data = t.zeros(N, C, outh, outw).int().cuda()
         args = [x.data_ptr(), rois.data_ptr(),
-                output.data_ptr(), self.argmax_data.data_ptr(),
-                self.spatial_scale, C, H, W, self.outh,
-                self.outw, output.numel()]  # numel():返回元素个数
-        stream = Stream(ptr=torch.cuda.current_stream().cuda_stream)
-        self.forward_fn(args=args,
-                        block=(CUDA_NUM_THREADS, 1, 1),
-                        grid=(GET_BLOCKS(output.numel()), 1, 1),
-                        stream=stream)
+                output.data_ptr(), argmax_data.data_ptr(),
+                spatial_scale, C, H, W, outh,
+                outw, output.numel()]  # numel()返回元素个数
+        stream = Stream(ptr=t.cuda.current_stream().cuda_stream)
+        forward_fn(args=args,
+                   block=(CUDA_NUM_THREADS, 1, 1),
+                   grid=(GET_BLOCKS(output.numel()), 1, 1),
+                   stream=stream)
+        ctx.N = N
+        ctx.outh = outh
+        ctx.outw = outw
+        ctx.spatial_scale = spatial_scale
+        ctx.in_size = in_size
+        ctx.argmax_data = argmax_data
+        ctx.rois = rois
+        ctx.forward_fn = forward_fn
+        ctx.backward_fn = backward_fn
 
         return output
 
-    def backward(self, grad_output):
+    @staticmethod
+    def backward(ctx, grad_output):
+        N = ctx.N
+        outh = ctx.outh
+        outw = ctx.outw
+        spatial_scale = ctx.spatial_scale
+        in_size = ctx.in_size
+        argmax_data = ctx.argmax_data
+        rois = ctx.rois
+        forward_fn = ctx.forward_fn
+        backward_fn = ctx.backward_fn
         grad_output = grad_output.contiguous()
-        B, C, H, W = self.in_size
-        grad_input = t.zeros(self.in_size).cuda()
-        stream = Stream(ptr=torch.cuda.current_stream().cuda_stream)
+        B, C, H, W = in_size
+        grad_input = t.zeros(in_size).cuda()
+        stream = Stream(ptr=t.cuda.current_stream().cuda_stream)
         args = [grad_output.data_ptr(),
-                self.argmax_data.data_ptr(),
-                self.rois.data_ptr(),
+                argmax_data.data_ptr(),
+                rois.data_ptr(),
                 grad_input.data_ptr(),
-                self.N, self.spatial_scale, C, H, W, self.outh, self.outw,
+                N, spatial_scale, C, H, W, outh, outw,
                 grad_input.numel()]
-        self.backward_fn(args=args,
-                         block=(CUDA_NUM_THREADS, 1, 1),
-                         grid=(GET_BLOCKS(input.numel()), 1, 1),
-                         stream=stream)
+        backward_fn(args=args,
+                    block=(CUDA_NUM_THREADS, 1, 1),
+                    grid=(GET_BLOCKS(grad_input.numel()), 1, 1),
+                    stream=stream)
 
-        return grad_input, None
+        return grad_input, None, None, None, None
 
 
-class RoIPPooling2D(nn.Module):
+class RoIPooling2D(nn.Module):
     def __init__(self, outh, outw, spatial_scale):
-        super(RoIPPooling2D, self).__init__()
-        self.RoI = RoI(outh, outw, spatial_scale)
+        super(RoIPooling2D, self).__init__()
+        self.outh = outh
+        self.outw = outw
+        self.spatial_scale = spatial_scale
 
     def forward(self, x, rois):
-        return self.RoI(x, rois)
+        return RoI.apply(x, rois, self.outh, self.outw, self.spatial_scale)
 
 
 def test_roi_module():

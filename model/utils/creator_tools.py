@@ -100,14 +100,14 @@ class ProposalTargetCreator(object):
 
         # 求出所有归为正样本的roi序号，总数大于指定数目按指定选取，反之按总数选取
         pos_index = np.where(max_iou >= self.pos_iou_thresh)[0]
-        pos_roi_per_this_image =  int(min(pos_roi_per_img, pos_index.size))
+        pos_roi_per_this_image = int(min(pos_roi_per_img, pos_index.size))
         if pos_index.size > 0:
             pos_index = np.random.choice(pos_index,
                                          pos_roi_per_this_image,
                                          replace=False)
 
-        neg_index = np.where(max_iou < self.neg_iou_thresh_hi) & \
-                            (max_iou > self.neg_iou_thresh_lo)
+        neg_index = np.where((max_iou < self.neg_iou_thresh_hi) &
+                             (max_iou > self.neg_iou_thresh_lo))[0]
         neg_roi_per_this_image = self.n_sample - pos_roi_per_this_image
         neg_roi_per_this_image = int(min(neg_roi_per_this_image,
                                          neg_index.size))
@@ -163,7 +163,7 @@ class AnchorTargetCreator(object):
 
         ious = bbox_iou(anchor, bbox)
         # 每个anchor对应IoU最大的gt序号
-        argmax_ious = ious.argmax(ious, axis=1)
+        argmax_ious = ious.argmax(axis=1)
         max_ious = ious[np.arange(ious.shape[0]), argmax_ious]
         # 每个gt对应IoU最大的anchor序号
         gt_argmax_ious = ious.argmax(axis=0)
